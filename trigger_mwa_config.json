@@ -1,0 +1,16 @@
+{
+    "default": {
+        "pretend": true,
+        "creator": "craftop",
+        "inttime": 330,
+        "nobs": 1,
+        "obsname": "craco_shadow"
+    },
+    "T001": {
+        "pretend": true,
+        "creator": "fake",
+        "inttime": 330,
+        "nobs": 1,
+        "obsname": "craco_test"
+    }
+}
