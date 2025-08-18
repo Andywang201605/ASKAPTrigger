@@ -1,0 +1,10 @@
+{
+    "default": {
+        "askap_project_ids": null,
+        "mwa_project_id": "T001"
+    },
+    "lotrun": {
+        "askap_project_ids": ["AS114"],
+        "mwa_project_id": "T001"
+    }
+}

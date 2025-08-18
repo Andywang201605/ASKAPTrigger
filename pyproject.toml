@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ASKAPTrigger"
+version = "0.0.1"
+description = "Python package for triggering other telescope based on ASKAP observations"
+authors = [{name = "Ziteng Wang"}]
+
+[project.scripts]
+askaprunner_setup = "ASKAPTrigger.setup:setup"
+askaprunner = "ASKAPTrigger.scripts.askaprunner:main"
+askap_trigger_mwa = "ASKAPTrigger.scripts.askap_trigger_mwa:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.package-data]
+ASKAPTrigger = ["*.json"]
+
+
