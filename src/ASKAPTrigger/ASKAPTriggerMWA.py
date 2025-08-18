@@ -7,7 +7,7 @@ Basic idea for the triggering
     Also check whether this observation is already 2 hours long
 """
 
-from askaptrigger import ASKAPSchedBlock
+from ASKAPTrigger.askaptrigger import ASKAPSchedBlock
 
 import sqlite3
 import requests
@@ -19,6 +19,13 @@ import os
 from astropy.time import Time
 from datetime import datetime
 
+import logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 class MWATrigger:
     """
@@ -260,6 +267,10 @@ class ASKAPMWATrigger:
         return int(now.gps)
     
     def trigger_mwa(self, **kwargs):
+        if "ra" not in self.mwatrigger.params:
+            logger.info("no ra/dec information found... will not trigger any observation...")
+            logger.info(f"please check whether SB{self.sbid} is a science observation - template: {self.schedblock.template}")
+            return None
         field = self.schedblock.alias
         if field: kwargs.update(dict(obsname=field)) # update alias...
         if self.groupid: kwargs.update(dict(groupid=self.groupid))
@@ -274,7 +285,7 @@ class ASKAPMWATrigger:
         this is used for triggering a bandpass calibrator observation only
         """
         if "ra" not in self.mwatrigger.params:
-            logging.info()
+            logger.info("no ra/dec information found... will use zenith for fake run for calibrator...")
             kwargs.update(dict(alt=89, az=0)) # use alt and az to do that...
         if self.groupid: kwargs.update(dict(groupid=self.groupid))
         kwargs.update(dict(
@@ -323,6 +334,8 @@ class ASKAPMWATrigger:
             response = self.trigger_mwa(**kwargs)
             if response is not None or self.dryrun:
                 time.sleep(inttime - buffertime)
+            else:
+                time.sleep(10) # stop for a while to check status...
             status = self.sbid_status
         logger.info(f"SB{self.sbid} observation finishes...")
 
