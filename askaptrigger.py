@@ -269,6 +269,10 @@ class MWATriggerTSP:
         - this function is used for triggering the tsp job...
         """
         ### check project...
+        if self.schedblock.template in ["Beamform", "OdcWeights"]:
+            logger.info(f"SB{self.sbid} is a {self.schedblock.template} scan... will to nothing")
+            return
+
         if self.askap_project_ids is not None:
             if self.schedblock.owner not in self.askap_project_ids:
                 logger.info(f"SB{self.sbid} is part of {self.schedblock.owner}... not in the allowed list...")
