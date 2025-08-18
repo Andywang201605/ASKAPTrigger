@@ -18,6 +18,7 @@ from astropy import units
 import re
 import os
 import sys
+import json
 import subprocess
 
 import logging
@@ -291,7 +292,7 @@ class MWATriggerTSP:
         ecopy = os.environ.copy()
         ecopy.update(environment)
 
-        cmd = f"""python `which trigger_mwa.py` -s {self.sbid} -p {self.mwa_project_id}"""
+        cmd = f"""`which trigger_mwa.py` -s {self.sbid} -p {self.mwa_project_id}"""
         if self.dryrun: cmd += " --dryrun"
 
         subprocess.run(
@@ -302,17 +303,51 @@ class MWATriggerTSP:
 ### this is the class for updating things when a SB status has been changed
 ### you might want to have multiple classes here, they should all inherit from iceint.schedblock.ISBStateMonitor
 class LotrunRunner(iceint.schedblock.ISBStateMonitor):
+
+    ASKAP_MWA_TRIGGER_CONFIG = "./askap_trigger_config.json"
+
+    def __init__(self, values=None):
+        super().__init__()
+        self.values = values
+
+        self._load_trigger_config()
+
+    def _load_trigger_config(self,):
+        self.project_alias = self.values.project
+        with open(self.ASKAP_MWA_TRIGGER_CONFIG) as fp:
+            trigger_config = json.load(fp)
+        if self.project_alias not in trigger_config:
+            logger.info(f"configuration for project alias {self.project_alias} not in {self.ASKAP_MWA_TRIGGER_CONFIG}...")
+            logger.info(f"proceed with default setup instead...")
+            askap_mwa_pairs = trigger_config["default"]
+        else:
+            askap_mwa_pairs = trigger_config[self.project_alias]
+            logger.info(f"loading setup for project alias {self.project_alias}...")
+
+        self.askap_project_ids = askap_mwa_pairs["askap_project_ids"]
+        self.mwa_project_id = askap_mwa_pairs["mwa_project_id"]
+        logger.info(f"Observation from {self.askap_project_ids} will trigger observation for MWA project {self.mwa_project_id}...")
+        
     def changed(self, sbid, state, updated, old_state, current=None):
         logger.info(f"ASKAP SB{sbid} status change from {old_state} to {state}")
         #########################################################
         if state == ObsState.EXECUTING:
             ### TODO - might specify project ids etc in a file...
-            mwatriggertsp = MWATriggerTSP(sbid=sbid, mwa_project_id="T001", dryrun=True)
+            mwatriggertsp = MWATriggerTSP(
+                sbid=sbid, askap_project_ids=self.askap_project_ids,
+                mwa_project_id=self.mwa_project_id, dryrun=self.values.dryrun
+            )
             mwatriggertsp.executing_run()
         
-
 if __name__ == "__main__":
-    runner = LotrunRunner()
+    ### this is for command line argument...
+    from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+    parser = ArgumentParser(description='Setup ASKAP Schedblock Listener', formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument("-p", "--project", type=str, help="alias name for sbid mwa project pairs", default="default")
+    parser.add_argument("--dryrun", action="store_true", help="whether run as a dry run or not", default=False)
+    values = parser.parse_args()
+
+    runner = LotrunRunner(values=values)
     state = SBStateSubscriber(runner)
     try:
         state.ice.waitForShutdown()
