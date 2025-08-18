@@ -251,7 +251,9 @@ class ASKAPMWATrigger:
     def _get_trigger_obsids(self, response, ):
         if self.dryrun: return [self._get_current_gps_time()]
         if response is None: return [None]
-        return response["obsid_list"]
+        obsid_list = response["obsid_list"]
+        if len(obsid_list) == 0: return [self._get_current_gps_time()]
+        return obsid_list
 
     def _get_current_gps_time(self,):
         now = Time(datetime.now())
@@ -265,6 +267,7 @@ class ASKAPMWATrigger:
         if (response is not None or self.dryrun) and self.groupid is None:
             self.groupid = self._get_trigger_obsids(response)[0]
             self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
+        return response
 
     def trigger_mwa_cal(self, calexptime=120, **kwargs):
         """
@@ -286,6 +289,7 @@ class ASKAPMWATrigger:
             if self.groupid is None:
                 self.groupid = self._get_trigger_obsids(response)[0]
                 self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
+        return response
 
     def run(self, buffertime=30, calfirst=True, calexptime=120, **kwargs):
         status = self.sbid_status
