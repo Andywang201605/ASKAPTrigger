@@ -292,7 +292,7 @@ class MWATriggerTSP:
         ecopy = os.environ.copy()
         ecopy.update(environment)
 
-        cmd = f"""`which trigger_mwa.py` -s {self.sbid} -p {self.mwa_project_id}"""
+        cmd = f"""`which askap_trigger_mwa` -s {self.sbid} -p {self.mwa_project_id}"""
         if self.dryrun: cmd += " --dryrun"
 
         subprocess.run(
