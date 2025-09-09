@@ -114,6 +114,7 @@ class MWATriggerDB:
     def _init_db(self):
         self.conn = sqlite3.connect(self.dbfname)
         cursor = self.conn.cursor()
+        ### this is for observation table
         cursor.execute('''
 CREATE TABLE IF NOT EXISTS mwatrigger (
     SBID INTEGER PRIMARY KEY,
@@ -122,6 +123,14 @@ CREATE TABLE IF NOT EXISTS mwatrigger (
     calobs INTEGER
 )''')
         self.conn.commit()
+        ### this is for calibration table
+        cursor.execute('''
+CREATE TABLE IF NOT EXISTS mwacal (
+    calgroupid INTEGER PRIMARY KEY,
+    time REAL
+)''')
+        self.conn.commit()
+        
         cursor.close()
 
     def insert_record(self, recordlst=None, **kwargs):
@@ -144,13 +153,41 @@ VALUES (?, ?, ?, ?)""", recordlst)
 
         except Exception as error:
             logger.error(f"cannot insert thie record! - {error}")
-
+    
     def _convert_insert_kwargs(self, argdict):
         """
         convert kwargs into recordlst
         """
         args = ["sbid", "time", "groupid", "calobs"]
         if "sbid" not in argdict: return None
+        return [argdict.get(arg) for arg in args]
+
+    def insert_cal_record(self, recordlst=None, **kwargs):
+        """
+        insert a single record into the calibration table
+        """
+        if recordlst is None: 
+            recordlst = self._convert_insert_cal_kwargs(kwargs)
+        if recordlst is None:
+            return
+        
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""INSERT INTO mwacal (calgroupid, time) 
+VALUES (?, ?)""", recordlst)
+            logger.info(f"insert record with following value - {recordlst}")
+            self.conn.commit()
+            cursor.close()
+
+        except Exception as error:
+            logger.error(f"cannot insert this record to mwacal! - {error}")
+
+    def _convert_insert_cal_kwargs(self, argdict):
+        """
+        convert kwargs into recordlst
+        """
+        args = ["calgroupid", "time"]
+        if "calgroupid" not in argdict: return None
         return [argdict.get(arg) for arg in args]
     
     def update_record(self, sbid, recordlst=None, **kwargs):
@@ -191,6 +228,21 @@ WHERE SBID = ?""", recordlst)
                 return None
         except Exception as error:
             logger.error(f"cannot query this record! - {error}")
+    
+    def query_cal_record(self, time, window=0.25):
+        """
+        function to query calibration record within given window
+        return True if there is a calibration record
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(f"""SELECT * FROM mwacal WHERE TIME > {time - window}""")
+            record = cursor.fetchone()
+
+            if record: return True
+            return False
+        except Exception as error:
+            logger.error(f"cannot query this record from mwacal... - {error}")
 
     def close(self,):
         self.conn.close()
