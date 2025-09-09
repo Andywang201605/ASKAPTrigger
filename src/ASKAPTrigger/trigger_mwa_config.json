@@ -2,15 +2,22 @@
     "default": {
         "pretend": true,
         "creator": "craftop",
-        "inttime": 330,
+        "inttime": 0.5,
         "nobs": 1,
         "obsname": "craco_shadow"
     },
     "T001": {
         "pretend": true,
         "creator": "fake",
-        "inttime": 330,
+        "inttime": 0.5,
         "nobs": 1,
         "obsname": "craco_test"
+    },
+    "G0117": {
+        "pretend": true,
+        "creator": "craftop",
+        "inttime": 0.5,
+        "exptime": 330,
+        "nobs": 1
     }
 }

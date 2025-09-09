@@ -3,8 +3,12 @@
         "askap_project_ids": null,
         "mwa_project_id": "T001"
     },
+    "lotrun_test": {
+        "askap_project_ids": null,
+        "mwa_project_id": "G0117"
+    },
     "lotrun": {
-        "askap_project_ids": ["AS114"],
-        "mwa_project_id": "T001"
+        "askap_project_ids": ["AS116"],
+        "mwa_project_id": "G0117"
     }
 }
