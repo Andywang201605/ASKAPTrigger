@@ -404,6 +404,7 @@ class ASKAPMWATrigger:
                 self.groupid = self._get_trigger_obsids(response)[0]
                 self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
             ### update calibration database
+            self.mwatriggerdb.insert_cal_record(calgroupid=self.groupid, time=self._get_current_mjd_time())
         return response
 
     def run(self, buffertime=30, calfirst=True, calexptime=120, **kwargs):
