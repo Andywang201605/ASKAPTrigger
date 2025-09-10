@@ -79,6 +79,36 @@ class MWATrigger:
         self.params.update({"secure_key": keys[self.params["project_id"]]})
         logger.info(f"get secure_key for project {self.params['project_id']} successfully...")
 
+    def check_array_ready(self, obstime=60):
+        """
+        check whether mwa can be interrupted by the given project
+        """
+        checklink = f"http://mro.mwa128t.org/trigger/busy?project_id={self.project_id}&obstime={obstime}"
+        try:
+            response = requests.get(checklink)
+            response.raise_for_status()
+        except Exception as error:
+            logger.error(f"cannot get correlator status... - {error}")
+            return None
+        
+        busy = response.json()
+        return not busy
+
+    def check_corr_ready(self, ):
+        """
+        check whether correlator is in oversampling mode or critical sampling mode
+        """
+        checklink = "http://mro.mwa128t.org/trigger/cstate"
+        try: 
+            response = requests.get(checklink)
+            response.raise_for_status()
+        except Exception as error:
+            logger.error(f"cannot get correlator status... - {error}")
+            return None 
+        
+        healthy, oversampling = response.json()
+        return not oversampling
+
     def trigger(self, **kwargs):
         trigger_data = self.params.copy()
         trigger_data.update(kwargs)
@@ -275,6 +305,14 @@ class ASKAPMWATrigger:
     def sbid_status(self,):
         return self.schedblock.status.value
     
+    @property
+    def mwa_status(self,):
+        # check whether the array can be interrupted
+        array_ready = self.mwatrigger.check_array_ready()
+        corr_ready = self.mwatrigger.check_corr_ready()
+        logging.info(f"mwa array ready: {array_ready}; correlator ready: {corr_ready}")
+        return array_ready and corr_ready
+    
     def running(self,):
         """
         a parameter to check whether a given sbid is running
@@ -317,6 +355,10 @@ class ASKAPMWATrigger:
     def _get_current_gps_time(self,):
         now = Time(datetime.now())
         return int(now.gps)
+
+    def _get_current_mjd_time(self,):
+        now = Time(datetime.now())
+        return now.mjd
     
     def trigger_mwa(self, **kwargs):
         if "ra" not in self.mwatrigger.params:
@@ -332,17 +374,26 @@ class ASKAPMWATrigger:
             self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
         return response
 
-    def trigger_mwa_cal(self, calexptime=120, **kwargs):
+    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=0.25, **kwargs):
         """
         this is used for triggering a bandpass calibrator observation only
         """
+        ### check whether there is already a calibration record within given window time (i.e., 6 hours)
+        mjdnow = self._get_current_mjd_time()
+        calexist = self.mwatriggerdb.query_cal_record(mjdnow, window=calsearchwindow)
+        if calexist: # there is already a calibration - do nothing
+            self.mwatriggerdb.update_record(sbid=self.sbid, calobs=True)
+            return None 
+
         if "ra" not in self.mwatrigger.params:
             logger.info("no ra/dec information found... will use zenith for fake run for calibrator...")
             kwargs.update(dict(alt=89, az=0)) # use alt and az to do that...
         if self.groupid: kwargs.update(dict(groupid=self.groupid))
+
+        ### TODO - check whether the parameter asked is correctly passed to calibration as well - it should, need real test
         kwargs.update(dict(
             calexptime=calexptime, calibrator=True, 
-            inttime=8, nobs=1 # schedule a fake short observation for calibration...
+            exptime=8, nobs=1 # schedule a fake short observation for calibration...
         ))
         field = self.schedblock.alias
         if field: kwargs.update(dict(obsname=f"{field}_cal")) # update alias...
@@ -352,6 +403,7 @@ class ASKAPMWATrigger:
             if self.groupid is None:
                 self.groupid = self._get_trigger_obsids(response)[0]
                 self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
+            ### update calibration database
         return response
 
     def run(self, buffertime=30, calfirst=True, calexptime=120, **kwargs):
@@ -369,24 +421,35 @@ class ASKAPMWATrigger:
 
         if calfirst and not calstatus:
             logging.info("scheduling calibrator observation...")
+            # note - we have already implement no cal logic in the below function
+            # i.e., no cal trigger if there is already a calibration within 6 hours
             response = self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
             if response is not None or self.dryrun:
                 time.sleep(calexptime) # wait for the calibrator observation to be finished...
         
         status = self.sbid_status
+        mwastatus = self.mwa_status
         logger.info(f"SB{self.sbid} current status - {status}...")
-        while status < 3:
-            logging.info(f"SB{self.sbid} has not been executed...")
+        while status < 3 or (status == 3 and not mwastatus):
+            # it will go into this while loop if
+            # (1) this sbid has not been executed;
+            # (2) this sbid is ongoing, but mwa is not ready for observation
+            if status < 3:
+                logging.info(f"SB{self.sbid} has not been executed...")
+            else:
+                logging.info(f"mwa array is not ready for observation...")
             time.sleep(10)
             status = self.sbid_status
+            mwastatus = self.mwa_status
 
-        inttime = self.mwatrigger.params.get("inttime")
+        exptime = self.mwatrigger.params.get("exptime")
         while status == 3:
             self.get_schedblock_source()
             response = self.trigger_mwa(**kwargs)
             if response is not None or self.dryrun:
-                time.sleep(inttime - buffertime)
+                time.sleep(exptime - buffertime)
             else:
+                # something goes wrong - either trigger service not working or something else
                 time.sleep(10) # stop for a while to check status...
             status = self.sbid_status
         logger.info(f"SB{self.sbid} observation finishes...")

@@ -18,6 +18,9 @@
         "creator": "craftop",
         "inttime": 0.5,
         "exptime": 330,
-        "nobs": 1
+        "nobs": 1,
+        "freqres": 80,
+        "freqspec": "157,24",
+        "tileset": "p1+solar"
     }
 }
