@@ -420,6 +420,18 @@ class ASKAPMWATrigger:
         self.get_schedblock_source() # you need to get coordinate first...
 
         if calfirst and not calstatus:
+            ### again you need to make sure array in a good mode to get the calibration...
+            mwastatus = self.mwa_status
+            logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
+            while not mwastatus:
+                logger.info(f"mwa is current unable to perform this observation...")
+                time.sleep(5) # wait every 5s...
+                mwastatus = self.mwa_status
+                if self.sbid_status > 3:
+                    logger.info("waited mwa for too long - observation has already finished...")
+                    self.mwatriggerdb.close()
+                    return None
+            #######################
             logging.info("scheduling calibrator observation...")
             # note - we have already implement no cal logic in the below function
             # i.e., no cal trigger if there is already a calibration within 6 hours
@@ -429,7 +441,7 @@ class ASKAPMWATrigger:
         
         status = self.sbid_status
         mwastatus = self.mwa_status
-        logger.info(f"SB{self.sbid} current status - {status}...")
+        logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
         while status < 3 or (status == 3 and not mwastatus):
             # it will go into this while loop if
             # (1) this sbid has not been executed;
@@ -450,7 +462,7 @@ class ASKAPMWATrigger:
                 time.sleep(exptime - buffertime)
             else:
                 # something goes wrong - either trigger service not working or something else
-                time.sleep(10) # stop for a while to check status...
+                time.sleep(5) # stop for a while to check status...
             status = self.sbid_status
         logger.info(f"SB{self.sbid} observation finishes...")
 
