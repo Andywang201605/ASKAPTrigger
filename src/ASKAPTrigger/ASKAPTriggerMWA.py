@@ -23,14 +23,6 @@ from datetime import datetime
 os.makedirs("./log", exist_ok=True)
 
 import logging
-# logging.basicConfig(
-#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
-#     level=logging.INFO,
-#     handlers=[
-#         logging.handlers.RotatingFileHandler(f"./log/mwatrigger.log", maxBytes=1e8,backupCount=5, ),
-#         logging.StreamHandler()
-#     ],
-# )
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -137,9 +129,9 @@ class MWATrigger:
             else: querylst.append(f"{k}={v}")
         querystr = "&".join(querylst)
         url = f"{self.MWA_TRIGGER_ENDPOINT}/{self.trigtype}?{querystr}"
-        logging.info(f"trigger the observation with following url - {url}")
+        logger.info(f"trigger the observation with following url - {url}")
         if self.dryrun:
-            logging.info(f"dryrun... will not create a trigger...")
+            logger.info(f"dryrun... will not create a trigger...")
             return None
         try:
             response = requests.post(url, )
@@ -157,7 +149,7 @@ class MWATrigger:
             self.trigger_response_list.append(response_json)
             success = response_json["success"]
             if success: return response.json()
-            logging.warning(f"trigger is not successful... please check...")
+            logger.warning(f"trigger is not successful... please check...")
             return None
         except requests.exceptions.RequestException as error:
             logger.info(f"error triggering mwa telescope - {error}")
@@ -338,7 +330,7 @@ class ASKAPMWATrigger:
         # check whether the array can be interrupted
         array_ready = self.mwatrigger.check_array_ready()
         corr_ready = self.mwatrigger.check_corr_ready()
-        logging.info(f"mwa array ready: {array_ready}; correlator ready: {corr_ready}")
+        logger.info(f"mwa array ready: {array_ready}; correlator ready: {corr_ready}")
         return array_ready and corr_ready
     
     def running(self,):
@@ -451,7 +443,7 @@ class ASKAPMWATrigger:
         if calfirst and not calstatus:
             ### again you need to make sure array in a good mode to get the calibration...
             mwastatus = self.mwa_status
-            logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
+            logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {mwastatus}")
             while not mwastatus:
                 logger.info(f"mwa is current unable to perform this observation...")
                 time.sleep(5) # wait every 5s...
@@ -461,7 +453,7 @@ class ASKAPMWATrigger:
                     self.mwatriggerdb.close()
                     return None
             #######################
-            logging.info("scheduling calibrator observation...")
+            logger.info("scheduling calibrator observation...")
             # note - we have already implement no cal logic in the below function
             # i.e., no cal trigger if there is already a calibration within 6 hours
             response = self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
@@ -470,15 +462,15 @@ class ASKAPMWATrigger:
         
         status = self.sbid_status
         mwastatus = self.mwa_status
-        logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
+        logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {mwastatus}")
         while status < 3 or (status == 3 and not mwastatus):
             # it will go into this while loop if
             # (1) this sbid has not been executed;
             # (2) this sbid is ongoing, but mwa is not ready for observation
             if status < 3:
-                logging.info(f"SB{self.sbid} has not been executed...")
+                logger.info(f"SB{self.sbid} has not been executed...")
             else:
-                logging.info(f"mwa array is not ready for observation...")
+                logger.info(f"mwa array is not ready for observation...")
             time.sleep(10)
             status = self.sbid_status
             mwastatus = self.mwa_status
@@ -498,12 +490,12 @@ class ASKAPMWATrigger:
         trigger_status = self.mwatriggerdb.query_record(sbid=self.sbid)
         calstatus = trigger_status["calobs"]
         if not calstatus:
-            logging.info("scheduling calibrator observation...")
+            logger.info("scheduling calibrator observation...")
             self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
-            logging.info(f"waiting for the observation to be finished... {calexptime}s...")
+            logger.info(f"waiting for the observation to be finished... {calexptime}s...")
             time.sleep(calexptime) # wait for the calibrator observation to be finished...
         
-        logging.info(f"MWA triggered observation done - SB{self.sbid}")
+        logger.info(f"MWA triggered observation done - SB{self.sbid}")
         self.mwatriggerdb.close()
         
 if __name__ == "__main__":
