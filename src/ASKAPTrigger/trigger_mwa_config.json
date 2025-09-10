@@ -21,6 +21,7 @@
         "nobs": 1,
         "freqres": 80,
         "freqspecs": "157,24",
-        "tileset": "p1+solar"
+        "tileset": "p1+solar",
+        "avoidsun": true
     }
 }
