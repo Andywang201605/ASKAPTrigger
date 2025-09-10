@@ -20,13 +20,27 @@ import os
 from astropy.time import Time
 from datetime import datetime
 
+os.makedirs("./log", exist_ok=True)
+
 import logging
 # logging.basicConfig(
 #     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
 #     level=logging.INFO,
-#     handlers=[logging.StreamHandler()],
+#     handlers=[
+#         logging.handlers.RotatingFileHandler(f"./log/mwatrigger.log", maxBytes=1e8,backupCount=5, ),
+#         logging.StreamHandler()
+#     ],
 # )
-# logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# stream handler
+fh = logging.handlers.RotatingFileHandler(f"./log/mwatrigger.log", maxBytes=1e8,backupCount=5, )
+fh.setFormatter(formatter)
+fh.setLevel(logging.INFO)
+logger.addHandler(fh)
+
 
 class MWATrigger:
     """
@@ -36,7 +50,7 @@ class MWATrigger:
     MWA_TRIGGER_ENDPOINT = "http://mro.mwa128t.org/trigger"
     MWA_TRIGGER_DEFAULT_PARAM = "./trigger_mwa_config.json"
 
-    def __init__(self, trigtype="triggerobs", project_id=None, dryrun=True, logger=None, **kwargs):
+    def __init__(self, trigtype="triggerobs", project_id=None, dryrun=True, **kwargs):
         """
         class for purely MWA triggering using MWA triggering api endpoint
 
@@ -53,7 +67,6 @@ class MWATrigger:
         self._load_default_params()
         self.params.update(kwargs)
         self.dryrun = dryrun
-        self.logger = logger
 
         ### this is used for updating secure_key from env
         self._load_secure_key()
@@ -69,17 +82,17 @@ class MWATrigger:
         self.params["project_id"] = self.project_id
 
     def update_default_params(self, **kwargs):
-        self.logger.info(f"updating default trigger parameter - {list(kwargs)}...")
+        logger.info(f"updating default trigger parameter - {list(kwargs)}...")
         self.params.update(kwargs)
 
     def _load_secure_key(self,):
         # load secure key from ~/.config/mwa_trigger_key.json
         if "secure_key" in self.params:
-            self.logger.warning(f"secure_key found in the parameter list... please remove it and put it in {self.MWA_TRIGGER_KEY_PATH}")
+            logger.warning(f"secure_key found in the parameter list... please remove it and put it in {self.MWA_TRIGGER_KEY_PATH}")
         with open(os.path.expanduser(self.MWA_TRIGGER_KEY_PATH)) as fp:
             keys = json.load(fp)
         self.params.update({"secure_key": keys[self.params["project_id"]]})
-        self.logger.info(f"get secure_key for project {self.params['project_id']} successfully...")
+        logger.info(f"get secure_key for project {self.params['project_id']} successfully...")
 
     def check_array_ready(self, obstime=60):
         """
@@ -90,7 +103,7 @@ class MWATrigger:
             response = requests.get(checklink)
             response.raise_for_status()
         except Exception as error:
-            self.logger.error(f"cannot get correlator status... - {error}")
+            logger.error(f"cannot get correlator status... - {error}")
             return None
         
         busy = response.json()
@@ -105,7 +118,7 @@ class MWATrigger:
             response = requests.get(checklink)
             response.raise_for_status()
         except Exception as error:
-            self.logger.error(f"cannot get correlator status... - {error}")
+            logger.error(f"cannot get correlator status... - {error}")
             return None 
         
         healthy, oversampling = response.json()
@@ -117,7 +130,12 @@ class MWATrigger:
 
         # I have no idea why requests.post(url, json=data) does not work
         # I will form a query string instead...
-        querystr = "&".join([f"{k}={urllib.parse.quote(v)}" for k, v in trigger_data.items()])
+        # querystr = "&".join([f"{k}={urllib.parse.quote(v)}" for k, v in trigger_data.items()])
+        querylst = []
+        for k, v in trigger_data.items():
+            if isinstance(v, str): querylst.append(f"{k}={urllib.parse.quote(v)}")
+            else: querylst.append(f"{k}={v}")
+        querystr = "&".join(querylst)
         url = f"{self.MWA_TRIGGER_ENDPOINT}/{self.trigtype}?{querystr}"
         logging.info(f"trigger the observation with following url - {url}")
         if self.dryrun:
@@ -131,26 +149,25 @@ class MWATrigger:
             ### save response to log folder...
             if storeresponse:
                 trigger_id = response_json["trigger_id"]
-                logfolder = f"./tmp/triggers"
+                logfolder = f"./log/triggers"
                 os.makedirs(logfolder, exist_ok=True)
                 with open(f"{logfolder}/{trigger_id}.response.json", "w") as fp:
-                    self.logger.info("dumping response json to {logfolder}/{trigger_id}.response.json")
-                    json.dump(response_json, fp)
+                    logger.info(f"dumping response json to {logfolder}/{trigger_id}.response.json")
+                    json.dump(response_json, fp, indent=2)
             self.trigger_response_list.append(response_json)
             success = response_json["success"]
             if success: return response.json()
             logging.warning(f"trigger is not successful... please check...")
             return None
         except requests.exceptions.RequestException as error:
-            self.logger.info(f"error triggering mwa telescope - {error}")
+            logger.info(f"error triggering mwa telescope - {error}")
             return None
         
 ####### this is for the database
 class MWATriggerDB:
-    def __init__(self, dbfname="./trigger.db", logger=None, ):
+    def __init__(self, dbfname="./trigger.db", ):
         self.dbfname = dbfname
         self._init_db()
-        self.logger = logger
         
     def _init_db(self):
         self.conn = sqlite3.connect(self.dbfname)
@@ -188,12 +205,12 @@ CREATE TABLE IF NOT EXISTS mwacal (
             cursor = self.conn.cursor()
             cursor.execute("""INSERT INTO mwatrigger (SBID, Time, groupid, calobs) 
 VALUES (?, ?, ?, ?)""", recordlst)
-            self.logger.info(f"insert record with following value - {recordlst}")
+            logger.info(f"insert record with following value - {recordlst}")
             self.conn.commit()
             cursor.close()
 
         except Exception as error:
-            self.logger.error(f"cannot insert thie record! - {error}")
+            logger.error(f"cannot insert thie record! - {error}")
     
     def _convert_insert_kwargs(self, argdict):
         """
@@ -216,12 +233,12 @@ VALUES (?, ?, ?, ?)""", recordlst)
             cursor = self.conn.cursor()
             cursor.execute("""INSERT INTO mwacal (calgroupid, time) 
 VALUES (?, ?)""", recordlst)
-            self.logger.info(f"insert record with following value - {recordlst}")
+            logger.info(f"insert record with following value - {recordlst}")
             self.conn.commit()
             cursor.close()
 
         except Exception as error:
-            self.logger.error(f"cannot insert this record to mwacal! - {error}")
+            logger.error(f"cannot insert this record to mwacal! - {error}")
 
     def _convert_insert_cal_kwargs(self, argdict):
         """
@@ -242,11 +259,11 @@ VALUES (?, ?)""", recordlst)
             cursor = self.conn.cursor()
             cursor.execute(f"""UPDATE mwatrigger SET {", ".join(updates)}
 WHERE SBID = ?""", recordlst)
-            self.logger.info(f"update record for {sbid} with following values - {recordlst}")
+            logger.info(f"update record for {sbid} with following values - {recordlst}")
             self.conn.commit()
             cursor.close()
         except Exception as error:
-            self.logger.error(f"cannot update this record! - {error}")
+            logger.error(f"cannot update this record! - {error}")
 
     def _convert_update_kwargs(self, sbid, argdict):
         args = ["time", "groupid", "calobs"]
@@ -268,7 +285,7 @@ WHERE SBID = ?""", recordlst)
             else:
                 return None
         except Exception as error:
-            self.logger.error(f"cannot query this record! - {error}")
+            logger.error(f"cannot query this record! - {error}")
     
     def query_cal_record(self, time, window=0.25):
         """
@@ -283,7 +300,7 @@ WHERE SBID = ?""", recordlst)
             if record: return True
             return False
         except Exception as error:
-            self.logger.error(f"cannot query this record from mwacal... - {error}")
+            logger.error(f"cannot query this record from mwacal... - {error}")
 
     def close(self,):
         self.conn.close()
@@ -293,14 +310,12 @@ class ASKAPMWATrigger:
     """
     this class is used for triggering MWA based on ASKAP observation
     """
-    def __init__(self, sbid, project_id=None, dryrun=True, logger=None):
+    def __init__(self, sbid, project_id=None, dryrun=True, ):
         self.sbid = sbid
         self.schedblock = ASKAPSchedBlock(sbid=self.sbid)
         self.dryrun = dryrun
-        self.mwatrigger = MWATrigger(project_id=project_id, dryrun=dryrun, logger=logger)
-        self.mwatriggerdb = MWATriggerDB(dbfname="trigger.db", logger=logger)
-
-        self.logger = logger
+        self.mwatrigger = MWATrigger(project_id=project_id, dryrun=dryrun)
+        self.mwatriggerdb = MWATriggerDB(dbfname="trigger.db")
 
         ### initiate database...
         self._init_db_record()
@@ -344,17 +359,17 @@ class ASKAPMWATrigger:
             if len(srclst) == 1:
                 self.coord = srclst[list(srclst)[0]]
             else:
-                self.logger.warning(f"{len(srclst)} sources found... will proceed with the last scan...")
+                logger.warning(f"{len(srclst)} sources found... will proceed with the last scan...")
                 maxscan = max(self.schedblock.scan_src_match.keys())
                 scansrc = self.schedblock.scan_src_match[maxscan]
-                self.logger.info(f"scan number {maxscan} source name {scansrc}...")
+                logger.info(f"scan number {maxscan} source name {scansrc}...")
                 self.coord = srclst[scansrc]
-            self.logger.info(f"SB{self.sbid} is targeting {self.coord}...")
+            logger.info(f"SB{self.sbid} is targeting {self.coord}...")
 
             self.mwatrigger.update_default_params(ra=self.coord[0], dec=self.coord[1])
         except Exception as error:
-            self.logger.warning(f"cannot get antenna pointing for {self.sbid}...")
-            self.logger.warning(f"error msg - {error}")
+            logger.warning(f"cannot get antenna pointing for {self.sbid}...")
+            logger.warning(f"error msg - {error}")
             self.coord = (None, None)
 
     ### parse trigger response
@@ -375,8 +390,8 @@ class ASKAPMWATrigger:
     
     def trigger_mwa(self, **kwargs):
         if "ra" not in self.mwatrigger.params:
-            self.logger.info("no ra/dec information found... will not trigger any observation...")
-            self.logger.info(f"please check whether SB{self.sbid} is a science observation - template: {self.schedblock.template}")
+            logger.info("no ra/dec information found... will not trigger any observation...")
+            logger.info(f"please check whether SB{self.sbid} is a science observation - template: {self.schedblock.template}")
             return None
         field = self.schedblock.alias
         if field: kwargs.update(dict(obsname=field)) # update alias...
@@ -399,7 +414,7 @@ class ASKAPMWATrigger:
             return None 
 
         if "ra" not in self.mwatrigger.params:
-            self.logger.info("no ra/dec information found... will use zenith for fake run for calibrator...")
+            logger.info("no ra/dec information found... will use zenith for fake run for calibrator...")
             kwargs.update(dict(alt=89, az=0)) # use alt and az to do that...
         if self.groupid: kwargs.update(dict(groupid=self.groupid))
 
@@ -422,10 +437,10 @@ class ASKAPMWATrigger:
 
     def run(self, buffertime=30, calfirst=True, calexptime=120, **kwargs):
         status = self.sbid_status
-        self.logger.info(f"SB{self.sbid} current status - {status}...")
+        logger.info(f"SB{self.sbid} current status - {status}...")
 
         if status > 3:
-            self.logger.info(f"SB{self.sbid} has already finished... abort...")
+            logger.info(f"SB{self.sbid} has already finished... abort...")
             return
         
         trigger_status = self.mwatriggerdb.query_record(sbid=self.sbid)
@@ -436,13 +451,13 @@ class ASKAPMWATrigger:
         if calfirst and not calstatus:
             ### again you need to make sure array in a good mode to get the calibration...
             mwastatus = self.mwa_status
-            self.logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
+            logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
             while not mwastatus:
-                self.logger.info(f"mwa is current unable to perform this observation...")
+                logger.info(f"mwa is current unable to perform this observation...")
                 time.sleep(5) # wait every 5s...
                 mwastatus = self.mwa_status
                 if self.sbid_status > 3:
-                    self.logger.info("waited mwa for too long - observation has already finished...")
+                    logger.info("waited mwa for too long - observation has already finished...")
                     self.mwatriggerdb.close()
                     return None
             #######################
@@ -455,7 +470,7 @@ class ASKAPMWATrigger:
         
         status = self.sbid_status
         mwastatus = self.mwa_status
-        self.logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
+        logger.info(f"SB{self.sbid} current status - {status}...; MWA current status - {status}")
         while status < 3 or (status == 3 and not mwastatus):
             # it will go into this while loop if
             # (1) this sbid has not been executed;
@@ -478,7 +493,7 @@ class ASKAPMWATrigger:
                 # something goes wrong - either trigger service not working or something else
                 time.sleep(5) # stop for a while to check status...
             status = self.sbid_status
-        self.logger.info(f"SB{self.sbid} observation finishes...")
+        logger.info(f"SB{self.sbid} observation finishes...")
 
         trigger_status = self.mwatriggerdb.query_record(sbid=self.sbid)
         calstatus = trigger_status["calobs"]
@@ -499,18 +514,5 @@ if __name__ == "__main__":
     parser.add_argument("--dryrun", action="store_true", help="whether run as a dry run or not", default=False)
     values = parser.parse_args()
 
-    os.makedirs("./log", exist_ok=True)
-
-    import logging
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
-        level=logging.INFO,
-        handlers=[
-            logging.FileHandler(f"./log/{values.sbid}.mwatrigger.log"),
-            logging.StreamHandler()
-        ],
-    )
-    logger = logging.getLogger(__name__)
-
-    trigger = ASKAPMWATrigger(sbid=values.sbid, project_id=values.pid, dryrun=values.dryrun, logger=logger)
+    trigger = ASKAPMWATrigger(sbid=values.sbid, project_id=values.pid, dryrun=values.dryrun, )
     trigger.run()
