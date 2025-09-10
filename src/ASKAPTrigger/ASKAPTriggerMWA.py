@@ -477,6 +477,12 @@ class ASKAPMWATrigger:
 
         exptime = self.mwatrigger.params.get("exptime")
         while status == 3:
+            mwastatus = self.mwa_status
+            if not mwastatus: # array is not ready...
+                status = self.sbid_status
+                time.sleep(5)
+                continue
+
             self.get_schedblock_source()
             response = self.trigger_mwa(**kwargs)
             if response is not None or self.dryrun:
