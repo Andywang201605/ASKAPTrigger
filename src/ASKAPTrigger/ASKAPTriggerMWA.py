@@ -279,7 +279,7 @@ WHERE SBID = ?""", recordlst)
         except Exception as error:
             logger.error(f"cannot query this record! - {error}")
     
-    def query_cal_record(self, time, window=0.25):
+    def query_cal_record(self, time, window=0.05):
         """
         function to query calibration record within given window
         return True if there is a calibration record
@@ -394,7 +394,7 @@ class ASKAPMWATrigger:
             self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
         return response
 
-    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=0.25, **kwargs):
+    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=0.05, **kwargs):
         """
         this is used for triggering a bandpass calibrator observation only
         """
