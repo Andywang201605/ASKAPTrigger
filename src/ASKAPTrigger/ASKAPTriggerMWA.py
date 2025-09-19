@@ -279,7 +279,7 @@ WHERE SBID = ?""", recordlst)
         except Exception as error:
             logger.error(f"cannot query this record! - {error}")
     
-    def query_cal_record(self, time, window=0.05):
+    def query_cal_record(self, time, window=1/24):
         """
         function to query calibration record within given window
         return True if there is a calibration record
@@ -394,7 +394,7 @@ class ASKAPMWATrigger:
             self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
         return response
 
-    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=0.05, **kwargs):
+    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=1/24, **kwargs):
         """
         this is used for triggering a bandpass calibrator observation only
         """
@@ -484,6 +484,8 @@ class ASKAPMWATrigger:
                 continue
 
             self.get_schedblock_source()
+            ### as there is calwindow parameter in trigger_mwa_cal, therefore I just add it here
+            response = self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
             response = self.trigger_mwa(**kwargs)
             if response is not None or self.dryrun:
                 time.sleep(exptime - buffertime)
@@ -493,13 +495,13 @@ class ASKAPMWATrigger:
             status = self.sbid_status
         logger.info(f"SB{self.sbid} observation finishes...")
 
-        trigger_status = self.mwatriggerdb.query_record(sbid=self.sbid)
-        calstatus = trigger_status["calobs"]
-        if not calstatus:
-            logger.info("scheduling calibrator observation...")
-            self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
-            logger.info(f"waiting for the observation to be finished... {calexptime}s...")
-            time.sleep(calexptime) # wait for the calibrator observation to be finished...
+        # trigger_status = self.mwatriggerdb.query_record(sbid=self.sbid)
+        # calstatus = trigger_status["calobs"]
+        ### trigger a calibration at the end no matter what
+        logger.info("scheduling calibrator observation...")
+        self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
+        logger.info(f"waiting for the observation to be finished... {calexptime}s...")
+        time.sleep(calexptime) # wait for the calibrator observation to be finished...
         
         logger.info(f"MWA triggered observation done - SB{self.sbid}")
         self.mwatriggerdb.close()
