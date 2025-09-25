@@ -195,9 +195,9 @@ CREATE TABLE IF NOT EXISTS mwacal (
         ### now we can update the database...
         try:
             cursor = self.conn.cursor()
+            logger.info(f"insert record with following value - {recordlst}")
             cursor.execute("""INSERT INTO mwatrigger (SBID, Time, groupid, calobs) 
 VALUES (?, ?, ?, ?)""", recordlst)
-            logger.info(f"insert record with following value - {recordlst}")
             self.conn.commit()
             cursor.close()
 
@@ -223,9 +223,9 @@ VALUES (?, ?, ?, ?)""", recordlst)
         
         try:
             cursor = self.conn.cursor()
+            logger.info(f"insert record with following value - {recordlst}")
             cursor.execute("""INSERT INTO mwacal (calgroupid, time) 
 VALUES (?, ?)""", recordlst)
-            logger.info(f"insert record with following value - {recordlst}")
             self.conn.commit()
             cursor.close()
 
@@ -424,7 +424,7 @@ class ASKAPMWATrigger:
                 self.groupid = self._get_trigger_obsids(response)[0]
                 self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
             ### update calibration database
-            self.mwatriggerdb.insert_cal_record(calgroupid=self.groupid, time=self._get_current_mjd_time())
+            self.mwatriggerdb.insert_cal_record(calgroupid=self._get_current_gps_time(), time=self._get_current_mjd_time())
         return response
 
     def run(self, buffertime=30, calfirst=True, calexptime=120, **kwargs):
@@ -458,7 +458,7 @@ class ASKAPMWATrigger:
             # i.e., no cal trigger if there is already a calibration within 6 hours
             response = self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
             if response is not None or self.dryrun:
-                time.sleep(calexptime) # wait for the calibrator observation to be finished...
+                time.sleep(calexptime + 8) # wait for the calibrator observation to be finished...
         
         status = self.sbid_status
         mwastatus = self.mwa_status
@@ -486,6 +486,9 @@ class ASKAPMWATrigger:
             self.get_schedblock_source()
             ### as there is calwindow parameter in trigger_mwa_cal, therefore I just add it here
             response = self.trigger_mwa_cal(calexptime=calexptime, **kwargs)
+            if response is not None or self.dryrun:
+                time.sleep(calexptime + 8)
+            ### now trigger the observation itself...
             response = self.trigger_mwa(**kwargs)
             if response is not None or self.dryrun:
                 time.sleep(exptime - buffertime)
