@@ -3,14 +3,6 @@
 # classes for triggers from askap side
 # this would be the main function to be running all the time
 
-import Ice
-import IceStorm
-from askap.iceutils import get_service_object
-from aces.askapdata.schedblock import SchedulingBlock
-
-import askap.interfaces as iceint
-from askap.interfaces.schedblock import ObsState
-
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from astropy import units
@@ -27,6 +19,16 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+import Ice
+import IceStorm
+try:
+    from askap.iceutils import get_service_object
+except:
+    logger.info(f"cannot load askap iceutils... only available for some modules...")
+from aces.askapdata.schedblock import SchedulingBlock
+import askap.interfaces as iceint
+from askap.interfaces.schedblock import ObsState
 
 class SBStateSubscriber(object):
     def __init__(self, monitor_impl=None):
