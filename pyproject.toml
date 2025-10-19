@@ -17,6 +17,6 @@ askap_trigger_mwa = "ASKAPTrigger.scripts.askap_trigger_mwa:main"
 package-dir = { "" = "src" }
 
 [tool.setuptools.package-data]
-ASKAPTrigger = ["*.json"]
+ASKAPTrigger = ["*.json", "*.csv"]
 
 

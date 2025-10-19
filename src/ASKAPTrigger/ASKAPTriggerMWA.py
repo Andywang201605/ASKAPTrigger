@@ -17,8 +17,16 @@ import time
 import sys
 import os
 
+import pandas as pd
+
 from astropy.time import Time
-from datetime import datetime
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy import units
+from datetime import datetime, timezone
+
+### stop downloading recent iers - this can cause significant delay...
+from astropy.utils import iers
+iers.conf.auto_download = False
 
 os.makedirs("./log", exist_ok=True)
 
@@ -311,6 +319,20 @@ class ASKAPMWATrigger:
 
         ### initiate database...
         self._init_db_record()
+        # load calibrator list...
+        self._load_mwa_calibrator()
+
+    def _load_mwa_calibrator(self,):
+        self.mwasite = EarthLocation.of_site("mwa")
+        calpath = os.path.join(os.path.dirname(__file__), "mwa_calibrator_coord.csv")
+        if not os.path.exists(calpath):
+            logger.warning(f"no mwa calibrator table found... {calpath}")
+            self.calnames = None
+            self.calcoords = None
+            return
+        caldf = pd.read_csv(calpath)
+        self.calnames = caldf["sourcename"].to_numpy()
+        self.calcoords = SkyCoord(caldf["ra"], caldf["dec"], unit=units.degree)
 
     def _init_db_record(self, ):
         _query = self.mwatriggerdb.query_record(self.sbid)
@@ -394,7 +416,29 @@ class ASKAPMWATrigger:
             self.mwatriggerdb.update_record(sbid=self.sbid, groupid=self.groupid)
         return response
 
-    def trigger_mwa_cal(self, calexptime=120, calsearchwindow=1/24, **kwargs):
+    def _select_cal(self,):
+        """
+        function to select calibrator based on the time
+        """
+        utctimenow = Time(datetime.now(timezone.utc))
+        logger.info(f"selecting calibrator - UTC Time now {utctimenow}")
+        if self.calnames is None:
+            logger.info(f"no calibrator list loaded... abort...")
+            return None
+        calcoords_altaz = self.calcoords.transform_to(
+            AltAz(obstime=utctimenow, location=self.mwasite)
+        )
+        calalts = calcoords_altaz.alt.value
+        ### choose the one with maximum altitude
+        calidx = calalts.argmax()
+        calselect = self.calnames[calidx]
+        logger.info(f"Select {calselect} with an elevation angle of {calalts[calidx]:.2f}...")
+        return calselect
+
+    def trigger_mwa_cal(
+            self, calexptime=120, calsearchwindow=1/24, 
+            autocal=False, forcecal=False, **kwargs
+        ):
         """
         this is used for triggering a bandpass calibrator observation only
         """
@@ -402,8 +446,10 @@ class ASKAPMWATrigger:
         mjdnow = self._get_current_mjd_time()
         calexist = self.mwatriggerdb.query_cal_record(mjdnow, window=calsearchwindow)
         if calexist: # there is already a calibration - do nothing
+            logger.info(f"calibration found in the database...")
             self.mwatriggerdb.update_record(sbid=self.sbid, calobs=True)
-            return None 
+            if not forcecal: return None 
+            logger.info(f"forcecal set to True - proceed to ask for a calibration anyway...")
 
         if "ra" not in self.mwatrigger.params:
             logger.info("no ra/dec information found... will use zenith for fake run for calibrator...")
@@ -415,6 +461,13 @@ class ASKAPMWATrigger:
             calexptime=calexptime, calibrator=True, 
             exptime=8, nobs=1 # schedule a fake short observation for calibration...
         ))
+        ### choose the calibrator mannually i.e., without MWA triggering service selection
+        if not autocal:
+            calselect = self._select_cal()
+            if calselect is not None:
+                logger.info(f"updating trigger data - calibrator to {calselect}")
+                kwargs.update(dict(calibrator=calselect))
+
         field = self.schedblock.alias
         if field: kwargs.update(dict(obsname=f"{field}_cal")) # update alias...
         response = self.mwatrigger.trigger(**kwargs)
